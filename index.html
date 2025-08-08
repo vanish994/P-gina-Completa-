@@ -3,48 +3,249 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Vanish Pay</title>
+    <title>Checkout GhostsPay - PIX e Cartão</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        /* Adicione o CSS aqui conforme discutido anteriormente */
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f4; }
+        .container { max-width: 400px; margin: auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px #0001; padding: 20px; }
+        h2 { color: #007bff; margin: 0 0 15px 0; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-weight: bold; margin-bottom: 5px; }
+        input, button { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; box-sizing: border-box; }
+        button { background: #007bff; color: #fff; border: none; margin-top: 10px; cursor: pointer; }
+        button:disabled { background: #999; }
+        .hidden { display: none; }
+        #qrcode { margin: 20px 0; }
+        .pix-code { background: #e0e0e0; padding: 10px; border-radius: 4px; cursor: pointer; word-break: break-all; }
+        .pix-code.copied { background: #c8e6c9; }
+        .response { background: #fafafa; margin-top: 10px; padding: 10px; border-radius: 4px; font-size: 0.9em; }
+        .error { color: #d32f2f; }
+        .success { color: #388e3c; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Vanish Pay</h1>
-
-        <div id="payment-form">
-            <label for="amount">Valor (R$)</label>
-            <input type="number" id="amount" min="5" value="50" placeholder="Digite o valor" />
-
-            <label for="description">Descrição</label>
-            <input type="text" id="description" value="Pack" placeholder="Descrição do pagamento" />
-
-            <label for="payment-method">Método de Pagamento</label>
-            <select id="payment-method" name="payment-method">
-              <option value="pix" selected>PIX</option>
-              <option value="credit-card">Cartão de Crédito</option>
-            </select>
-
-            <button id="generate-payment-btn" onclick="gerarPagamento()">Gerar Pagamento</button>
+<div class="container">
+    <h2>Pagamento via PIX</h2>
+    <form id="pix-form" onsubmit="event.preventDefault(); generatePix();">
+        <div class="form-group">
+            <label for="pix-amount">Valor (R$)</label>
+            <input type="number" id="pix-amount" min="5" value="50" required />
         </div>
-
-        <div id="pix-payment" class="hidden">
-            <p style="text-align: center; margin-bottom: 16px; color: #b0b0b0;">Escaneie o QR Code ou copie o código PIX:</p>
-            <div id="qrcode"></div>
-            <div class="pix-code" id="pix-code" onclick="copyPixCode()" title="Clique para copiar o código PIX"></div>
-            <p class="pix-info">👆 Clique no código para copiar</p>
-            <div id="timer">Tempo restante: 00:00</div>
-            <button id="verify-payment-btn" onclick="checkPayment()">Verificar Pagamento</button>
-            <button id="new-payment-btn" onclick="newPayment()">Novo Pagamento</button>
+        <div class="form-group">
+            <label for="pix-desc">Descrição</label>
+            <input type="text" id="pix-desc" value="Produto Teste" required />
         </div>
-        <div id="payment-status"></div>
-        <div id="api-response-log" style="margin-top: 20px; font-size: 0.8em; color: #555;"></div>
+        <button id="pix-btn" type="submit">Gerar PIX</button>
+    </form>
+    <div id="pix-area" class="hidden">
+        <div id="qrcode"></div>
+        <div class="pix-code" id="pix-code" onclick="copyPixCode()" title="Clique para copiar"></div>
+        <div id="pix-timer"></div>
+        <button onclick="checkPayment()">Verificar Pagamento</button>
+        <button onclick="resetPix()">Novo PIX</button>
+        <div id="pix-status" class="response"></div>
     </div>
+    <hr>
+    <h2>Pagamento por Cartão</h2>
+    <form id="card-form" onsubmit="event.preventDefault(); createCardToken();">
+        <div class="form-group">
+            <label>Número do Cartão</label>
+            <input type="text" id="card-number" placeholder="0000 0000 0000 0000" maxlength="19" required />
+        </div>
+        <div class="form-group">
+            <label>Nome do Titular</label>
+            <input type="text" id="card-holder" placeholder="Nome impresso no cartão" required />
+        </div>
+        <div class="form-group">
+            <label>Validade (MM/AA)</label>
+            <input type="text" id="card-expiry" placeholder="MM/AA" maxlength="5" required />
+        </div>
+        <div class="form-group">
+            <label>CVV</label>
+            <input type="text" id="card-cvv" placeholder="CVV" maxlength="4" required />
+        </div>
+        <button id="card-btn" type="submit">Gerar Token de Cartão</button>
+        <div id="card-response" class="response"></div>
+    </form>
+</div>
+<script>
+    const API_BASE_URL = "https://app.ghostspaysv1.com/api/v1";
+    // ATENÇÃO: Nunca exponha sua chave SECRET_KEY em produção!
+    const SECRET_KEY = "b5544f0d-a409-422b-8270-48842317b55b";
+    let paymentId = null;
+    let countdownInterval = null;
 
-    <script>
-        // Funções JavaScript para gerar PIX, Cartão de Crédito e verificação
-    </script>
+    // PIX
+    function generatePix() {
+        const btn = document.getElementById("pix-btn");
+        btn.disabled = true;
+        const amountInput = document.getElementById("pix-amount");
+        const descInput = document.getElementById("pix-desc");
+        const amount = Math.round(Number(amountInput.value) * 100);
+        const description = descInput.value.trim();
+
+        if (!amount || amount < 500) {
+            showPixError("Valor mínimo: R$ 5,00");
+            btn.disabled = false;
+            return;
+        }
+        if (!description) {
+            showPixError("Descrição obrigatória.");
+            btn.disabled = false;
+            return;
+        }
+
+        fetch(`${API_BASE_URL}/transaction.purchase`, {
+            method: "POST",
+            headers: {
+                "Authorization": SECRET_KEY,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                name: "Cliente PIX",
+                email: "pix@cliente.com",
+                cpf: "00000000000",
+                phone: "11999999999",
+                paymentMethod: "PIX",
+                amount: amount,
+                traceable: true,
+                items: [{
+                    title: description,
+                    unitPrice: amount,
+                    quantity: 1,
+                    tangible: false
+                }]
+            })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.id && data.pixQrCode && data.pixCode) {
+                paymentId = data.id;
+                document.getElementById("pix-form").classList.add("hidden");
+                document.getElementById("pix-area").classList.remove("hidden");
+                document.getElementById("qrcode").innerHTML = "";
+                new QRCode(document.getElementById("qrcode"), { text: data.pixQrCode, width: 200, height: 200 });
+                document.getElementById("pix-code").innerText = data.pixCode;
+                showPixStatus("Aguardando pagamento...", false);
+                startCountdown(30);
+            } else {
+                showPixError("Erro ao gerar PIX! Verifique os dados e tente novamente.");
+            }
+        })
+        .catch(() => showPixError("Falha na requisição PIX."))
+        .finally(() => { btn.disabled = false; });
+    }
+    function startCountdown(min) {
+        let sec = min * 60;
+        clearInterval(countdownInterval);
+        countdownInterval = setInterval(() => {
+            sec--;
+            const m = String(Math.floor(sec / 60)).padStart(2, "0");
+            const s = String(sec % 60).padStart(2, "0");
+            document.getElementById("pix-timer").innerText = `Tempo restante: ${m}:${s}`;
+            if (sec <= 0) {
+                clearInterval(countdownInterval);
+                document.getElementById("pix-timer").innerText = "PIX expirado!";
+            }
+        }, 1000);
+    }
+    function copyPixCode() {
+        navigator.clipboard.writeText(document.getElementById("pix-code").innerText)
+            .then(() => {
+                const el = document.getElementById("pix-code");
+                el.classList.add("copied");
+                setTimeout(() => el.classList.remove("copied"), 800);
+            });
+    }
+    function checkPayment() {
+        if (!paymentId) return;
+        fetch(`${API_BASE_URL}/transaction.getPayment?id=${paymentId}`, {
+            headers: { "Authorization": SECRET_KEY }
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === "APPROVED") {
+                clearInterval(countdownInterval);
+                showPixStatus("Pagamento aprovado!", true);
+            } else if (data.status === "PENDING") {
+                showPixStatus("Pagamento pendente...", false);
+            } else {
+                showPixError("Pagamento não aprovado. Status: " + (data.status || "Desconhecido"));
+            }
+        })
+        .catch(() => showPixError("Erro ao verificar pagamento."));
+    }
+    function resetPix() {
+        clearInterval(countdownInterval);
+        document.getElementById("pix-form").classList.remove("hidden");
+        document.getElementById("pix-area").classList.add("hidden");
+        document.getElementById("pix-status").innerHTML = "";
+        paymentId = null;
+    }
+    function showPixError(msg) {
+        document.getElementById("pix-status").innerHTML = `<span class="error">${msg}</span>`;
+    }
+    function showPixStatus(msg, success) {
+        document.getElementById("pix-status").innerHTML = `<span class="${success ? 'success' : ''}">${msg}</span>`;
+    }
+
+    // Cartão
+    function createCardToken() {
+        const btn = document.getElementById("card-btn");
+        btn.disabled = true;
+        const n = document.getElementById("card-number").value.replace(/\s+/g,'');
+        const h = document.getElementById("card-holder").value.trim();
+        const e = document.getElementById("card-expiry").value.trim();
+        const c = document.getElementById("card-cvv").value.trim();
+        const responseDiv = document.getElementById("card-response");
+
+        if (!n.match(/^\d{12,19}$/)) {
+            showCardError("Número do cartão inválido.");
+            btn.disabled = false;
+            return;
+        }
+        if (!h) {
+            showCardError("Nome do titular obrigatório.");
+            btn.disabled = false;
+            return;
+        }
+        if (!e.match(/^\d{2}\/\d{2}$/)) {
+            showCardError("Validade deve ser no formato MM/AA.");
+            btn.disabled = false;
+            return;
+        }
+        if (!c.match(/^\d{3,4}$/)) {
+            showCardError("CVV inválido.");
+            btn.disabled = false;
+            return;
+        }
+        fetch(`${API_BASE_URL}/transaction.createCardToken`, {
+            method: "POST",
+            headers: {
+                "Authorization": SECRET_KEY,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                cardNumber: n,
+                cardHolder: h,
+                cardExpiry: e,
+                cardCvv: c
+            })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.token) {
+                responseDiv.innerHTML = `<span class="success">Token gerado: ${data.token}</span>`;
+            } else {
+                showCardError("Erro ao gerar token. " + (data.message || ""));
+            }
+        })
+        .catch(() => showCardError("Erro ao gerar token."))
+        .finally(() => { btn.disabled = false; });
+    }
+    function showCardError(msg) {
+        document.getElementById("card-response").innerHTML = `<span class="error">${msg}</span>`;
+    }
+</script>
 </body>
-</html>
+    </html>
