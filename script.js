@@ -1,1 +1,1 @@
-// Funções JavaScript fornecidas anteriormente
+// Funções JavaScript para o pagamento via PIX e Cartão de Crédito

@@ -27,4 +27,4 @@ Para a integração com a **Ghostspay API**, você precisará de uma **Secret Ke
 
 ## Licença
 
-Distribuído sob a licença MIT.# P-gina-Completa-
+Distribuído sob a licença MIT.
